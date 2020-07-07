@@ -535,6 +535,7 @@ func (r *SimpleRTree) setLeafNode(n *rNode, nc nodeConstruct) rVectorBBox {
 
 	x0, y0 := r.points.GetPointAt(start)
 	vb := rVectorBBox{x0, y0, x0, y0}
+	// TODO где-то тут добавлять линии, а не точки.
 
 	for i := end - start - 1; i > 0; i-- {
 		x1, y1 := r.points.GetPointAt(start + i)
