@@ -52,24 +52,24 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"sort"
 	"strings"
+	"sync"
 	"text/template"
 	"unsafe"
-	"sync"
-	"sort"
 )
 
 const MAX_POSSIBLE_SIZE = 9
 
 // SimpleRTree is the main structure of the library
 type SimpleRTree struct {
-	options Options
-	nodes   []rNode
-	points  FlatPoints
-	built   bool
-	queuePool         sync.Pool
-	unsafeQueue         searchQueue // Only used in unsafe mode
-	sorterBuffer      []int // floyd rivest requires a bucket, we allocate it once and reuse
+	options      Options
+	nodes        []rNode
+	points       FlatPoints
+	built        bool
+	queuePool    sync.Pool
+	unsafeQueue  searchQueue // Only used in unsafe mode
+	sorterBuffer []int       // floyd rivest requires a bucket, we allocate it once and reuse
 }
 
 // FlatPoints is the input format for coordinates
@@ -88,37 +88,37 @@ const (
 	HILBERT
 )
 
-
 // SimpleRTree can be slightly tuned
 type Options struct {
 	UnsafeConcurrencyMode bool // Set this parameter to true if you only intend to access the R tree from one go routine. FindNearestPoint will be faster and it will make no allocations
-	MAX_ENTRIES int
-	TreeType TreeType
-	RTreePool *sync.Pool // If a lot of RTrees are being created you can provide a pool to the tree. On destroy the underlying memory space will be saved back to the pool, so next tree can use it
+	MAX_ENTRIES           int
+	TreeType              TreeType
+	RTreePool             *sync.Pool // If a lot of RTrees are being created you can provide a pool to the tree. On destroy the underlying memory space will be saved back to the pool, so next tree can use it
 }
 
 type rNode struct {
-	nodeType         nodeType
-	nChildren        int8
+	nodeType  nodeType
+	nChildren int8
 	// Here we save firstChild - firstNode. That means that there is there is a theoretical upper limit to the tree of
 	// maxuint32 / node_size = 4294967295 / 40 = 107374182 ~ 100M
 	firstChildOffset uint32
 	BBox             rVectorBBox
 }
 type nodeType int8
+
 const (
 	default_node = iota
 	preleaf_node
 )
 
 var node_size = unsafe.Sizeof(rNode{})
-var flat_point_size =unsafe.Sizeof([2]float64{})
+var flat_point_size = unsafe.Sizeof([2]float64{})
 var float_size = uintptr(unsafe.Sizeof([1]float64{}))
 
 type pooledMem struct {
 	sorterBuffer []int
-	sq searchQueue
-	nodes []rNode
+	sq           searchQueue
+	nodes        []rNode
 }
 
 // Structure used to constructing the ndoe
@@ -159,22 +159,24 @@ func NewWithOptions(o Options) *SimpleRTree {
 //   r1.Destroy()
 //r2 will be used with the same underlying objects, thus avoiding heap allocations
 //   r2 := SimpleRTree.NewWithOptions(SimpleRTree.Options{RTreePool: pool})
-func (r *SimpleRTree) Destroy () {
+func (r *SimpleRTree) Destroy() {
 	if r.options.RTreePool != nil {
 		r.options.RTreePool.Put(
 			&pooledMem{
 				sorterBuffer: r.sorterBuffer,
-				sq: r.unsafeQueue,
-				nodes: r.nodes,
+				sq:           r.unsafeQueue,
+				nodes:        r.nodes,
 			},
 		)
 	}
 }
+
 // Load accepts points, an flat array of coordinates and builds the RTree
 //
 // Note: rtree is assumed to have sole access to the array, it will modify the underlying order and it
 // will return wrong results if the elements are modified
 func (r *SimpleRTree) Load(points FlatPoints) *SimpleRTree {
+	fmt.Println("mem")
 	return r.load(points, false)
 }
 
@@ -230,8 +232,8 @@ func (r *SimpleRTree) FindNearestPointWithin(x, y, dsquared float64) (x1, y1, d1
 
 	for sq.Len() > 0 {
 		sq.PreparePop()
-		item := sq[sq.Len() - 1]
-		sq = sq[0: sq.Len() - 1]
+		item := sq[sq.Len()-1]
+		sq = sq[0 : sq.Len()-1]
 		currentDistance := item.distance
 		if found && currentDistance > distanceLowerBound {
 			break
@@ -249,7 +251,7 @@ func (r *SimpleRTree) FindNearestPointWithin(x, y, dsquared float64) (x1, y1, d1
 		case preleaf_node:
 			f := unsafeRootLeafNode + uintptr(node.firstChildOffset)
 			var i int8
-			for i = node.nChildren; i>0; i-- {
+			for i = node.nChildren; i > 0; i-- {
 				px := *(*float64)(unsafe.Pointer(f))
 				f = f + float_size
 				py := *(*float64)(unsafe.Pointer(f))
@@ -264,7 +266,7 @@ func (r *SimpleRTree) FindNearestPointWithin(x, y, dsquared float64) (x1, y1, d1
 		default:
 			f := unsafeRootNode + uintptr(node.firstChildOffset)
 			var i int8
-			for i = node.nChildren; i>0; i-- {
+			for i = node.nChildren; i > 0; i-- {
 				n := (*rNode)(unsafe.Pointer(f))
 				mind, maxd := vectorComputeDistances(n.BBox, x, y)
 				if mind <= distanceUpperBound {
@@ -300,8 +302,8 @@ func (r *SimpleRTree) load(points FlatPoints, isSorted bool) *SimpleRTree {
 	if points.Len() == 0 {
 		return r
 	}
-	if points.Len() >= math.MaxUint32 / int(node_size) {
-		log.Fatal("Exceded maximum possible size", math.MaxUint32 / int(node_size))
+	if points.Len() >= math.MaxUint32/int(node_size) {
+		log.Fatal("Exceded maximum possible size", math.MaxUint32/int(node_size))
 	}
 	if r.options.MAX_ENTRIES == 0 {
 		panic("MAX entries was 0")
@@ -321,13 +323,13 @@ func (r *SimpleRTree) load(points FlatPoints, isSorted bool) *SimpleRTree {
 		}
 	}
 	if isPooledMemReceived && cap(rtreePooledMem.sorterBuffer) >= r.options.MAX_ENTRIES+1 {
-		r.sorterBuffer = rtreePooledMem.sorterBuffer[0: 0]
+		r.sorterBuffer = rtreePooledMem.sorterBuffer[0:0]
 	} else {
 		r.sorterBuffer = make([]int, 0, r.options.MAX_ENTRIES+1)
 	}
 	r.points = points
 	if isPooledMemReceived && cap(rtreePooledMem.nodes) >= computeSize(points.Len()) {
-		r.nodes = rtreePooledMem.nodes[0: 0]
+		r.nodes = rtreePooledMem.nodes[0:0]
 	} else {
 		r.nodes = make([]rNode, 0, computeSize(points.Len()))
 	}
@@ -345,7 +347,7 @@ func (r *SimpleRTree) load(points FlatPoints, isSorted bool) *SimpleRTree {
 			r.unsafeQueue = make(searchQueue, rootNodeConstruct.height*r.options.MAX_ENTRIES)
 		} else {
 			r.queuePool = sync.Pool{
-				New: func () interface {} {
+				New: func() interface{} {
 					return make(searchQueue, rootNodeConstruct.height*r.options.MAX_ENTRIES)
 				},
 			}
@@ -358,20 +360,20 @@ func (r *SimpleRTree) load(points FlatPoints, isSorted bool) *SimpleRTree {
 
 func (r *SimpleRTree) buildHilbert(points FlatPoints, isSorted bool) nodeConstruct {
 	r.nodes = append(r.nodes, rNode{})
-	if (!isSorted) {
+	if !isSorted {
 		r.sortHilbert(points)
 	}
 
 	nBuckets := points.Len() / r.options.MAX_ENTRIES
-	if (points.Len() % r.options.MAX_ENTRIES > 0) {
+	if points.Len()%r.options.MAX_ENTRIES > 0 {
 		nBuckets++
 	}
 	previousStart := 0
 	nextStart := len(r.nodes)
 	height := 2
-	for i:= 0; i < nBuckets ; i++ {
-		start := previousStart + i * r.options.MAX_ENTRIES
-		end := minInt(start + r.options.MAX_ENTRIES, points.Len())
+	for i := 0; i < nBuckets; i++ {
+		start := previousStart + i*r.options.MAX_ENTRIES
+		end := minInt(start+r.options.MAX_ENTRIES, points.Len())
 		x0, y0 := r.points.GetPointAt(start)
 		vb := rVectorBBox{x0, y0, x0, y0}
 
@@ -386,9 +388,9 @@ func (r *SimpleRTree) buildHilbert(points FlatPoints, isSorted bool) nodeConstru
 			vb = vectorBBoxExtend(vb, vb1)
 		}
 		r.nodes = append(r.nodes, rNode{
-			nodeType: preleaf_node,
-			BBox: vb,
-			nChildren: int8(end - start),
+			nodeType:         preleaf_node,
+			BBox:             vb,
+			nChildren:        int8(end - start),
 			firstChildOffset: uint32(start) * uint32(flat_point_size),
 		})
 	}
@@ -398,22 +400,22 @@ func (r *SimpleRTree) buildHilbert(points FlatPoints, isSorted bool) nodeConstru
 		previousStart = nextStart
 		nextStart = len(r.nodes)
 		nBuckets = previousNBuckets / r.options.MAX_ENTRIES
-		if (previousNBuckets % r.options.MAX_ENTRIES > 0) {
+		if previousNBuckets%r.options.MAX_ENTRIES > 0 {
 			nBuckets++
 		}
-		for i:= 0; i < nBuckets ; i++ {
-			start := previousStart + i * r.options.MAX_ENTRIES
-			end := minInt(start + r.options.MAX_ENTRIES, len(r.nodes))
+		for i := 0; i < nBuckets; i++ {
+			start := previousStart + i*r.options.MAX_ENTRIES
+			end := minInt(start+r.options.MAX_ENTRIES, len(r.nodes))
 			vb := r.nodes[start].BBox
 
 			for i := end - start - 1; i > 0; i-- {
-				vb1 := r.nodes[start + i].BBox
+				vb1 := r.nodes[start+i].BBox
 				vb = vectorBBoxExtend(vb, vb1)
 			}
 			r.nodes = append(r.nodes, rNode{
-				nodeType: default_node,
-				BBox: vb,
-				nChildren: int8(end - start),
+				nodeType:         default_node,
+				BBox:             vb,
+				nChildren:        int8(end - start),
 				firstChildOffset: uint32(start) * uint32(node_size),
 			})
 		}
@@ -422,8 +424,8 @@ func (r *SimpleRTree) buildHilbert(points FlatPoints, isSorted bool) nodeConstru
 	r.nodes[0] = rNode{
 		nodeType: default_node,
 		// no need for bbox
-		firstChildOffset: uint32(previousStart)  * uint32(node_size),
-		nChildren: int8(nBuckets),
+		firstChildOffset: uint32(previousStart) * uint32(node_size),
+		nChildren:        int8(nBuckets),
 	}
 
 	return nodeConstruct{
@@ -433,7 +435,7 @@ func (r *SimpleRTree) buildHilbert(points FlatPoints, isSorted bool) nodeConstru
 
 func (r *SimpleRTree) sortHilbert(points FlatPoints) {
 	hashes := make([]uint64, points.Len())
-	for i:= 0; i < points.Len(); i++ {
+	for i := 0; i < points.Len(); i++ {
 		hash := GeoHash(points.GetPointAt(i))
 		hashes[i] = hash
 	}
@@ -480,7 +482,7 @@ func (r *SimpleRTree) buildNodeDownwards(n *rNode, nc nodeConstruct, isSorted bo
 	firstChildIndex := len(r.nodes)
 	for i := 0; i < N; i += N1 {
 		right2 := minInt(i+N1, N)
-		sortY := ySorter{n: n, points: r.points, start: start+ i, end: start+ right2, bucketSize: N2}
+		sortY := ySorter{n: n, points: r.points, start: start + i, end: start + right2, bucketSize: N2}
 		sortY.Sort(r.sorterBuffer)
 		for j := i; j < right2; j += N2 {
 			right3 := minInt(j+N2, right2)
@@ -518,7 +520,7 @@ func (r *SimpleRTree) setLeafNode(n *rNode, nc nodeConstruct) rVectorBBox {
 	x0, y0 := r.points.GetPointAt(start)
 	vb := rVectorBBox{x0, y0, x0, y0}
 
-	for i := end-start - 1; i > 0; i-- {
+	for i := end - start - 1; i > 0; i-- {
 		x1, y1 := r.points.GetPointAt(start + i)
 		vb1 := [4]float64{
 			x1,

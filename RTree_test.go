@@ -1,13 +1,13 @@
 package SimpleRTree
 
 import (
+	"fmt"
 	"github.com/stretchr/testify/assert"
 	_ "github.com/stretchr/testify/assert"
 	"math"
 	"math/rand"
-	"testing"
 	"sync"
-	"fmt"
+	"testing"
 )
 
 func TestNode_ComputeDistances(t *testing.T) {
@@ -168,7 +168,7 @@ func TestSimpleRTree_FindNearestPointBigUnsafeMode(t *testing.T) {
 		points[i] = rand.Float64()
 	}
 	fp := FlatPoints(points)
-	r := NewWithOptions(Options{UnsafeConcurrencyMode:true}).Load(fp)
+	r := NewWithOptions(Options{UnsafeConcurrencyMode: true}).Load(fp)
 	for i := 0; i < 1000; i++ {
 		x, y := rand.Float64(), rand.Float64()
 		x1, y1, _ := r.FindNearestPoint(x, y)
@@ -351,7 +351,7 @@ func BenchmarkSimpleRTree_FindNearestPointHilbert(b *testing.B) {
 			}
 			fp := FlatPoints(points)
 			r := NewWithOptions(Options{
-				TreeType: HILBERT,
+				TreeType:              HILBERT,
 				UnsafeConcurrencyMode: true,
 			}).Load(fp)
 			b.ResetTimer()
@@ -362,7 +362,6 @@ func BenchmarkSimpleRTree_FindNearestPointHilbert(b *testing.B) {
 		})
 	}
 }
-
 
 func BenchmarkSimpleRTree_FindNearestPointMemory(b *testing.B) {
 	benchmarks := []struct {
