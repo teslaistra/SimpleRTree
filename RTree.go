@@ -63,13 +63,15 @@ const MAX_POSSIBLE_SIZE = 9
 
 // SimpleRTree is the main structure of the library
 type SimpleRTree struct {
-	options      Options
-	nodes        []rNode
-	points       FlatPoints
-	built        bool
-	queuePool    sync.Pool
-	unsafeQueue  searchQueue // Only used in unsafe mode
-	sorterBuffer []int       // floyd rivest requires a bucket, we allocate it once and reuse
+	options         Options
+	nodes           []rNode
+	points          FlatPoints
+	lines           FlatLines
+	built           bool
+	queuePool       sync.Pool
+	unsafeQueue     searchQueue // Only used in unsafe mode
+	sorterBuffer    []int       // floyd rivest requires a bucket, we allocate it once and reuse
+	linesStartIndex int64
 }
 
 // FlatPoints is the input format for coordinates
@@ -80,6 +82,7 @@ type SimpleRTree struct {
 // Note: rtree is assumed to have sole access to the array, it will modify the underlying order and it
 // will return wrong results if the elements are modified
 type FlatPoints []float64
+type FlatLines []float64
 
 type TreeType uint8
 
@@ -111,6 +114,7 @@ const (
 	preleaf_node
 )
 
+var borderOfLines = 0
 var node_size = unsafe.Sizeof(rNode{})
 var flat_point_size = unsafe.Sizeof([2]float64{})
 var float_size = uintptr(unsafe.Sizeof([1]float64{}))
@@ -147,6 +151,10 @@ func NewWithOptions(o Options) *SimpleRTree {
 		r.options.MAX_ENTRIES = MAX_POSSIBLE_SIZE
 	}
 	return r
+}
+
+func (r *SimpleRTree) Reload(lines FlatLines, points FlatPoints) {
+
 }
 
 // Destroy frees up resources that are held within the RTree
@@ -478,11 +486,13 @@ func (r *SimpleRTree) buildNodeDownwards(n *rNode, nc nodeConstruct, isSorted bo
 	start := int(nc.start)
 	fmt.Println("start", start)
 	// parent node might already be sorted. In that case we avoid double computation
-
+	fmt.Println("sortX:", r.points)
 	if !isSorted {
-		sortX := xSorter{n: n, points: r.points, start: start, end: int(nc.end), bucketSize: N1}
-		sortX.Sort(r.sorterBuffer)
-		fmt.Println("sortX", sortX)
+		//sortX := xSorter{n: n, points: r.points, start: start, end: int(nc.end), bucketSize: N1}
+		//sortX.Sort(r.sorterBuffer)
+		//fmt.Println("sortX:", sortX.points)
+		sort.Float64s(r.points)
+		fmt.Println("Ints:   ", r.points)
 	}
 	nodeConstructs := [MAX_POSSIBLE_SIZE]nodeConstruct{} //сделали максимальное количество нод, куда раскидаем "излишки"
 	var nodeConstructIndex int8
@@ -519,7 +529,6 @@ func (r *SimpleRTree) buildNodeDownwards(n *rNode, nc nodeConstruct, isSorted bo
 	var i int8
 	bbox := r.buildNodeDownwards(&r.nodes[firstChildIndex], nodeConstructs[i], false)
 	for i = 1; i < nodeConstructIndex; i++ {
-		// TODO check why using (*Node)f here does not work
 		bbox2 := r.buildNodeDownwards(&r.nodes[firstChildIndex+int(i)], nodeConstructs[i], false)
 		bbox = vectorBBoxExtend(bbox, bbox2)
 	}
@@ -536,9 +545,11 @@ func (r *SimpleRTree) setLeafNode(n *rNode, nc nodeConstruct) rVectorBBox {
 	x0, y0 := r.points.GetPointAt(start)
 	vb := rVectorBBox{x0, y0, x0, y0}
 	// TODO где-то тут добавлять линии, а не точки.
+	fmt.Println("x:", x0, "y:", y0)
 
 	for i := end - start - 1; i > 0; i-- {
 		x1, y1 := r.points.GetPointAt(start + i)
+		fmt.Println("x:", x1, "y:", y1)
 		vb1 := [4]float64{
 			x1,
 			y1,
