@@ -3,6 +3,7 @@ package SimpleRTree
 // This is copy paste from floyd rivest to use concrete types. Perf gain is 2.5x in load times
 
 import (
+	"fmt"
 	"math"
 )
 
@@ -21,6 +22,8 @@ func bucketsY(slice ySorter, bucketSize int, buffer []int) {
 	stack = append(stack, left)
 	stack = append(stack, right)
 	s := ySorterStack(stack)
+	fmt.Println("s:", s, "buffer", buffer, "slice", slice)
+
 	var mid int
 	for len(s) > 0 {
 		s, right = s.pop()

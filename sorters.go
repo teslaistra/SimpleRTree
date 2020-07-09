@@ -1,5 +1,7 @@
 package SimpleRTree
 
+import "fmt"
+
 type xSorter struct {
 	n                      *rNode
 	points                 FlatPoints
@@ -21,6 +23,7 @@ func (s xSorter) Len() int {
 }
 
 func (s xSorter) Sort(buffer []int) {
+	fmt.Println("from sroters X buffer is", buffer)
 	bucketsX(s, s.bucketSize, buffer)
 }
 
@@ -44,6 +47,8 @@ func (s ySorter) Len() int {
 	return s.end - s.start
 }
 func (s ySorter) Sort(buffer []int) {
+	fmt.Println("from sroters y buffer is", buffer)
+
 	// we already do the shifting on the sort functions
 	bucketsY(s, s.bucketSize, buffer)
 }

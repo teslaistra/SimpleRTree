@@ -469,10 +469,10 @@ func (r *SimpleRTree) buildNodeDownwards(n *rNode, nc nodeConstruct, isSorted bo
 	N := int(nc.end - nc.start)
 	// target number of root entries to maximize storage utilization
 	var M float64
-	fmt.Println("Пострена корневая нода", N, r.options.MAX_ENTRIES)
+	//fmt.Println("Пострена корневая нода", N, r.options.MAX_ENTRIES)
 
 	if N <= r.options.MAX_ENTRIES { // Leaf node
-		fmt.Println("call build")
+		//fmt.Println("call build")
 		return r.setLeafNode(n, nc) //сделали максимальное количество нод, куда раскидаем "излишки"
 	}
 
@@ -484,34 +484,37 @@ func (r *SimpleRTree) buildNodeDownwards(n *rNode, nc nodeConstruct, isSorted bo
 	fmt.Println("M", M, "N2", N2, "N1", N1)
 
 	start := int(nc.start)
-	fmt.Println("start", start)
+	//fmt.Println("start", start)
 	// parent node might already be sorted. In that case we avoid double computation
-	fmt.Println("sortX:", r.points)
+	//fmt.Println("sortX:", r.points)
 	if !isSorted {
-		//sortX := xSorter{n: n, points: r.points, start: start, end: int(nc.end), bucketSize: N1}
-		//sortX.Sort(r.sorterBuffer)
+		fmt.Println("n:", n, "points:", r.points, "start:", start, "end", int(nc.end), "bucketsize:", N1)
+		sortX := xSorter{n: n, points: r.points, start: start, end: int(nc.end), bucketSize: N1}
+		sortX.Sort(r.sorterBuffer)
 		//fmt.Println("sortX:", sortX.points)
-		sort.Float64s(r.points)
+		//sort.Float64s(r.points)
 		fmt.Println("Ints:   ", r.points)
 	}
 	nodeConstructs := [MAX_POSSIBLE_SIZE]nodeConstruct{} //сделали максимальное количество нод, куда раскидаем "излишки"
 	var nodeConstructIndex int8
 	firstChildIndex := len(r.nodes)
-	fmt.Println("firstChildIndex", firstChildIndex)
-	fmt.Println("N", N)
+	//fmt.Println("firstChildIndex", firstChildIndex)
+	//fmt.Println("N", N)
 	for i := 0; i < N; i += N1 {
 		right2 := minInt(i+N1, N)
-		fmt.Println("right2", right2)
+		//fmt.Println("right2", right2)
+		//fmt.Println("before sortY", r.points)
+
 		sortY := ySorter{n: n, points: r.points, start: start + i, end: start + right2, bucketSize: N2}
 		sortY.Sort(r.sorterBuffer)
 		fmt.Println("sortY", sortY)
 
 		for j := i; j < right2; j += N2 {
 			right3 := minInt(j+N2, right2)
-			fmt.Println("right3", right3)
+			//fmt.Println("right3", right3)
 			child := rNode{}
-			fmt.Println("nc.start", nc.start)
-			fmt.Println("j", uint32(j))
+			//fmt.Println("nc.start", nc.start)
+			//fmt.Println("j", uint32(j))
 
 			childC := nodeConstruct{
 				start:  nc.start + uint32(j),
